@@ -1,0 +1,277 @@
+---
+title: "Optimizaci�n"
+author: "Mejor equipo"
+date: "8 de mayo del 2018"
+output: markdowntemplates::bulma
+---
+
+```{r}
+library('plot3D')
+b<-mesh(seq(0, 1, .01),
+seq(0, 1, .01))
+
+u<-b$x
+v<-b$y
+
+z<-u^2+v^2-6*u*v
+
+
+scatter3D(u, v, z, colvar = z)
+```
+
+
+##Monte Carlo Crudo
+```{r}
+set.seed(2018)
+#Problema:
+#Minimizar x^2+y^2-6xy
+#S.a (x,y)>=0
+#   x+y<=1
+#   3x+y<=1.5
+
+n <- (10 ^ 3)
+
+
+fmin <- 1000 #valor muy grande
+x1 <- 99
+y1 <- 99 #valores arbitrarios
+
+
+x<-NULL
+y<-NULL
+X<-NULL
+Y<-NULL
+X1<-NULL
+Y1<-NULL
+for (i in seq(n)) {
+  x[i] <- (runif(1) * .5)
+  y[i]<- (runif(1))*(1-x[i])
+  if (x[i] + y[i] <= 1) { #primera restricción
+    if (3 * x[i] + y[i] <= 1.5) { #segunda restricción
+      X<-c(X,x[i])
+      Y<-c(Y,y[i])
+      if (x[i] ^ 2 + y[i] ^ 2 - 6 * x[i] * y[i] < fmin) { #función objetivo
+        fmin <- x[i] ^ 2 + y[i] ^ 2 - 6 * x[i] * y[i]
+        x1 <- x[i]
+        y1 <- y[i]
+        X1<-c(X1,x1)
+        Y1<-c(Y1,y1)
+        
+      }
+    }
+  }
+}
+
+cat('valor minimo de x:',x1,';')
+cat('valor minimo de y:',y1,';')
+cat('valor minimo de f:',fmin,';')
+cat('valores rechazados: ',1-length(X)/n,'%')
+par(bg = 'white', fg = 12)
+plot(X,Y)
+#abline(h=y1,col=2)
+#abline(v=x1,col=2)
+points(x1, y1, col = "red",lwd=14)
+abline(a=1,b=-1,col=4)
+abline(h=0,col=4)
+abline(v=0, col=4)
+abline(a=1.5,b=-3,col=4)
+z<-seq(0.26,.5,.01)
+z1<-3*z-sqrt(fmin+8*z^2)
+lines(z,z1,col=3,lwd=3)
+lines(X1,Y1,col=14,lwd=3,type='o')
+
+
+
+```
+
+
+##Gibbs-Sampling
+
+```{r}
+set.seed(2018)
+#Problema:
+#Minimizar x^2+y^2-6xy
+#S.a (x,y)>=0
+#   x+y<=1
+#   3x+y<=1.5
+
+n <- (10 ^ 3)
+
+
+fmin <- 1000 #valor muy grande
+x1 <- 99
+y1 <- 99 #valores arbitrarios
+
+
+x<-NULL
+y<-NULL
+X<-NULL
+Y<-NULL
+X1<-NULL
+Y1<-NULL
+for (i in seq(n/2)) {
+  if(i==1){x[2*i-1] <- (runif(1) * .5)}
+  else{x[2*i-1]<-x[2*i-2]}
+  
+  repeat{
+  
+  y[2*i-1]<- (runif(1))*(1-x[2*i-1])
+  if (x[2*i-1] + y[2*i-1] <= 1) { #primera restricción
+    if (3 * x[2*i-1] + y[2*i-1] <= 1.5) { #segunda restricción
+      X<-c(X,x[2*i-1])
+      Y<-c(Y,y[2*i-1])
+      
+      if (x[2*i-1] ^ 2 + y[2*i-1] ^ 2 - 6 * x[2*i-1] * y[2*i-1] < fmin) { #función objetivo
+        fmin <- x[2*i-1] ^ 2 + y[2*i-1] ^ 2 - 6 * x[2*i-1] * y[2*i-1]
+        x1 <- x[2*i-1]
+        y1 <- y[2*i-1]
+        X1<-c(X1,x1)
+        Y1<-c(Y1,y1)
+        
+      }
+      break
+      }
+    }
+  }
+  
+  repeat{
+  
+  y[2*i]<- y[2*i-1]
+  x[2*i]<-runif(1)*(1-y[2*i])
+  if (x[2*i] + y[2*i] <= 1) { #primera restricción
+    if (3 * x[2*i] + y[2*i] <= 1.5) { #segunda restricción
+      X<-c(X,x[2*i])
+      Y<-c(Y,y[2*i])
+      
+      if (x[2*i] ^ 2 + y[2*i] ^ 2 - 6 * x[2*i] * y[2*i] < fmin) { #función objetivo
+        fmin <- x[2*i] ^ 2 + y[2*i] ^ 2 - 6 * x[2*i] * y[2*i]
+        x1 <- x[2*i]
+        y1 <- y[2*i]
+        X1<-c(X1,x1)
+        Y1<-c(Y1,y1)
+        
+      }
+      break
+      }
+    }
+  }
+  
+}
+
+cat('valor minimo de x:',x1,';')
+cat('valor minimo de y:',y1,';')
+cat('valor minimo de f:',fmin,';')
+#cat('valores rechazados: ',1-length(X)/n,'%')
+par(bg = 'white', fg = 12)
+plot(X,Y)
+#abline(h=y1,col=2)
+#abline(v=x1,col=2)
+points(x1, y1, col = "red",lwd=14)
+abline(a=1,b=-1,col=4)
+abline(h=0,col=4)
+abline(v=0, col=4)
+abline(a=1.5,b=-3,col=4)
+z<-seq(0.3,.5,.01)
+z1<-3*z-sqrt(fmin+8*z^2)
+lines(z,z1,col=3,lwd=3)
+lines(X1,Y1,col=14,lwd=3,type='o')
+
+
+
+```
+
+
+##Gibbs-Sampling(modificado)
+
+```{r}
+set.seed(2018)
+#Problema:
+#Minimizar x^2+y^2-6xy
+#S.a (x,y)>=0
+#   x+y<=1
+#   3x+y<=1.5
+
+n <- (12)
+
+
+fmin <- 1000 #valor muy grande
+x1 <- 99
+y1 <- 99 #valores arbitrarios
+
+
+x<-NULL
+y<-NULL
+X<-NULL
+Y<-NULL
+X1<-NULL
+Y1<-NULL
+for (i in seq(n/2)) {
+  if(i==1){x[2*i-1] <- (runif(1) * .5)}
+  else{x[2*i-1]<-x[2*i-2]}
+  
+  repeat{
+  
+  y[2*i-1]<- (runif(1))*(1-x[2*i-1])
+  if (x[2*i-1] + y[2*i-1] <= 1) { #primera restricción
+    if (3 * x[2*i-1] + y[2*i-1] <= 1.5) { #segunda restricción
+      X<-c(X,x[2*i-1])
+      Y<-c(Y,y[2*i-1])
+      
+      if (x[2*i-1] ^ 2 + y[2*i-1] ^ 2 - 6 * x[2*i-1] * y[2*i-1] < fmin) { #función objetivo
+        fmin <- x[2*i-1] ^ 2 + y[2*i-1] ^ 2 - 6 * x[2*i-1] * y[2*i-1]
+        x1 <- x[2*i-1]
+        y1 <- y[2*i-1]
+        X1<-c(X1,x1)
+        Y1<-c(Y1,y1)
+        break
+      }
+      
+      }
+    }
+  }
+  
+  repeat{
+  
+  y[2*i]<- y[2*i-1]
+  x[2*i]<-runif(1)*(1-y[2*i])
+  if (x[2*i] + y[2*i] <= 1) { #primera restricción
+    if (3 * x[2*i] + y[2*i] <= 1.5) { #segunda restricción
+      X<-c(X,x[2*i])
+      Y<-c(Y,y[2*i])
+      
+      if (x[2*i] ^ 2 + y[2*i] ^ 2 - 6 * x[2*i] * y[2*i] < fmin) { #función objetivo
+        fmin <- x[2*i] ^ 2 + y[2*i] ^ 2 - 6 * x[2*i] * y[2*i]
+        x1 <- x[2*i]
+        y1 <- y[2*i]
+        X1<-c(X1,x1)
+        Y1<-c(Y1,y1)
+        break
+      }
+      
+      }
+    }
+  }
+  
+}
+
+cat('valor minimo de x:',x1,';')
+cat('valor minimo de y:',y1,';')
+cat('valor minimo de f:',fmin,';')
+#cat('valores rechazados: ',1-length(X)/n,'%')
+par(bg = 'white', fg = 12)
+#plot(X,Y)
+#abline(h=y1,col=2)
+#abline(v=x1,col=2)
+plot(x1, y1, col = "red",lwd=14,xlim=c(0,1),ylim=c(0,1))
+abline(a=1,b=-1,col=4)
+abline(h=0,col=4)
+abline(v=0, col=4)
+abline(a=1.5,b=-3,col=4)
+z<-seq(0.3,.5,.01)
+z1<-3*z-sqrt(fmin+8*z^2)
+lines(z,z1,col=3,lwd=3)
+lines(X1,Y1,col=14,lwd=3,type='o')
+
+
+
+```
