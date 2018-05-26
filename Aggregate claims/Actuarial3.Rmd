@@ -1,0 +1,684 @@
+---
+title: "Proyecto Final Actuarial 3"
+author: "Ilan Jinich & Juan Carlos Silva " #Orden alfabetico 
+date: "26 de mayo del 2018"
+output: markdowntemplates::skeleton 
+#https://github.com/hrbrmstr/markdowntemplates
+---
+
+```{r,eval=FALSE,echo=FALSE}
+#Corre esto para instalar el template
+if (!("devtools" %in% installed.packages())){
+  install.packages("devtools")
+}
+
+devtools::install_github("hrbrmstr/markdowntemplates")
+```
+
+```{r,warning=FALSE,message=FALSE}
+
+set.seed(2018) #Por error trabajamos con la semilla 2018.
+
+#Paquetes
+library(lubridate)
+library(ggplot2)
+library(survival)
+library(magrittr)
+library(dplyr)
+library(tidyr)
+library(fitdistrplus)
+library(actuar)
+library(fExtremes)
+library(gPdtest)
+library(tidyverse)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+ruta<-"C:\\Users\\ilan\\Dropbox\\Actuarial 3"
+#ruta<-"C:\\Users\\jcsil\\Dropbox\\Actuarial 3"
+setwd(ruta)
+dts<-read.csv("ACT.csv")
+dts$AccDate<-dmy(dts$AccDate)
+```
+#Introducción
+Se dispone de un set de datos que va desde Julio de 1989 hasta Enero de 1999. La información contenida son los registros de daños y reclamos por lesiones de un portafolio de una compañía de seguros. En total hay 22,036 registros de las fechas mencionadas. El objetivo de nuestro trabajo consta de:
+
+*	Lograr una caracterización de las distribuciones de reclamos individuales.
+
+*	En nuestro caso, hicimos un ajuste distribucional por tipo de herida, lo cual nos permite tener un aproximado mas preciso al momento de realizar la simulación correspondiente.
+*	Definir el esquema de agregación de seguros.
+
+*	Calcular la distribución de los riesgos agregados.
+
+*	Como se observará mas adelante, esto se logró gracias a un proceso de exploración y análisis de los datos y de las posibles distribuciones que podían caracterizar este portafolio.
+  
+*	Definición de primas de riesgo y de capital mínimo de operación para garantizar que la compañía no caiga en ruina en el año 1999.
+
+*	Lo anterior se logró realizando una simulación tomando en cuenta las distribuciones ajustadas para cada uno de los tipos de lesiones. Es importante mencionar que se incorporó el supuesto sugerido de 2% de pólizas siniestradas.
+
+#Supuesto
+El primer supuesto que hicimos para segmentar los datos fue la uniformidad de los tipos de accidente en cada reclamo, esto es, si consideramos unicamente InjType1 como paramétro para segmentar es suficiente y no es necesario conocer los otros comportamientos. El siguiente código nos ayuda a llegar a esa decisión. No mostramos la tabla completa porque era muy grande.
+```{r,eval=FALSE}
+dts %>% 
+  group_by(InjType1,InjNb) %>% 
+  mutate(a=AggClaim/InjNb) %>% 
+  summarise(mean_Agg = mean(a),maxAgg=max(a), minAgg=min(a),n=length(a) , na.rm=TRUE)
+```
+
+
+
+
+#Resumen por grupo
+##medium injury
+```{r}
+x<-subset(dts,
+          InjType1=='medium injury' )$AggClaim/subset(dts,
+          InjType1=='medium injury' )$InjNb
+
+smp_size <- floor(0.85 * length(x))
+train_ind <- sample(length((x)), size = smp_size)
+
+train <- x[train_ind ]
+test <- x[-train_ind ]
+
+
+```
+
+###Historial y edf de los datos de entrenamiento
+```{r}
+plotdist(train, histo = TRUE, demp = TRUE)
+```
+
+En este caso se decidió que el mejor modelo era una distribución de Pareto generalizada, los criterios que se usaron fueron KS, Akaike, el valor de la verosimilitud y las gráficas qq. El modelo bajo los datos de entrenamiento se ve de la siguiente forma:
+```{r}
+
+ml<-gpdFit(train, u = 0, type = c("pwm"), information =     c("observed"), title = NULL, description = NULL)
+plot(ml,which=4)
+ml
+
+```
+El modelo no ajusta perfecto los datos y esto se debe principalmente a la poca cantidad de valores extremos (en este caso 3).
+
+Sobre los datos de testing, tenemos el siguiente comportamiento:
+```{r}
+
+length(test)
+
+
+plot(sort(test),qgev(((1:length(test))/length(test)),xi = 4.015587e-0, mu = 0, beta =2.712141e+04))
+mean(train)
+
+abline(a=0,b=1,col=3)
+```
+
+
+El ajuste paramétrico en este caso no parece ser bueno, la ventaja esta en que el modelo tiene colas mucho más pesadas que nuestros datos y por lo tanto sus resultados serán más conservadores. El problema aquí esta en que la cantidad de valores extremos es pequeña (3 datos para entrenar y 1 para probar). El modelo de hecho ajusta bien todos los datos menos uno.
+
+
+
+##minor injury
+```{r}
+x<-subset(dts,
+          InjType1=='minor injury' )$AggClaim/subset(dts,
+          InjType1=='minor injury' )$InjNb
+
+smp_size <- floor(0.85 * length(x))
+train_ind <- sample(length((x)), size = smp_size)
+
+train <- x[train_ind ]
+test <- x[-train_ind ]
+
+
+```
+
+###Historial y edf de los datos de entrenamiento
+```{r}
+plotdist(train, histo = TRUE, demp = TRUE)
+```
+En este caso se decidió que el mejor modelo era una distribución de Pareto generalizada, los criterios que se usaron fueron KS, Akaike, el valor de la verosimilitud y las gráficas qq. El modelo bajo los datos de entrenamiento se ve así:
+```{r}
+
+ml<-gpdFit(train, u = 0, type = c("mle"), information =     c("observed"), title = NULL, description = NULL)
+
+plot(ml,4)
+ml
+```
+El modelo no ajusta perfecto los datos y esto se debe principalmente a la poca cantidad de valores extremos (en este caso 6).
+
+Sobre los datos de testing el modelo se ve así:
+```{r}
+
+length(test)
+mean(train)
+
+
+plot(sort(test),qgev(((1:length(test))/length(test)),
+                     xi =   0.473090, 
+                     mu =0,
+                     beta = 8668.8497461))
+
+abline(a=0,b=1,col=3)
+```
+
+El ajuste paramétrico en este caso no parece ser bueno, la ventaja esta en que el modelo tiene colas mucho más pesadas que nuestros datos y por lo tanto sus resultados serán más conservadores. El problema aquí esta en que la cantidad de valores extremos es pequeña (3 datos para entrenar y 2 para probar).
+Se comporta muy similar este grupo al de arriba
+
+##not recorded
+
+Este grupo se ignora suponiendo que los grupos no se registran de forma uniforme. Es decir, cada grupo tienen la misma probabilidad de no registrarse pero no se pierde la distribución del monto agregado al no registrarse. 
+
+##small injury
+
+```{r}
+x<-subset(dts,
+          InjType1=='small injury' )$AggClaim/subset(dts,
+          InjType1=='small injury' )$InjNb
+
+smp_size <- floor(0.85 * length(x))
+train_ind <- sample(length((x)), size = smp_size)
+
+train <- x[train_ind ]
+test <- x[-train_ind ]
+
+
+```
+
+###Historial y edf de los datos de entrenamiento
+```{r}
+plotdist(train, histo = TRUE, demp = TRUE)
+```
+En este caso se decidio que el mejor modelo era una distribución lognormal, aquí aprovechamos que no habia valores extremos y optamos por un modelo más simple. Los criterios que se usaron fueron KS, Akaike, el valor de la verosimilitud y las gráficas qq. El modelo bajo los datos de entrenamiento tiene el siguiente comportamiento:
+
+```{r}
+fit_ln <- fitdist(x, "lnorm")
+plot(fit_ln)
+fit_ln
+```
+
+
+Para los datos de prueba el modelo se ve así:
+```{r}
+
+length(test)
+
+plot(sort(test),qlnorm(((1:length(test))/length(test)),meanlog = 9.548459, sdlog=1.389464))
+
+abline(a=0,b=1,col=3)
+```
+En general parece ser bueno y va bien con la idea de simplicidad del modelo, solo uno de los datos parece no  ajustarse bien al modelo. En general, pasa lo mismo que antes y nuestro modelo tiene colas más pesadas que los datos. 
+
+##severe injury
+
+```{r}
+x<-subset(dts,
+          InjType1=='severe injury' )$AggClaim/subset(dts,
+          InjType1=='severe injury' )$InjNb
+
+smp_size <- floor(0.85 * length(x))
+train_ind <- sample(length((x)), size = smp_size)
+
+train <- x[train_ind ]
+test <- x[-train_ind ]
+
+
+```
+
+###Historial y edf de los datos de entrenamiento
+```{r}
+plotdist(train, histo = TRUE, demp = TRUE)
+```
+En este caso se decidió que el mejor modelo era una distribución de Pareto generalizada, los criterios que se usaron fueron KS, Akaike, el valor de la verosimilitud y las gráficas qq. El modelo bajo los datos de entrenamiento se ve así:
+```{r}
+
+ml<-gpdFit(train, u = min(train), type = c("pwm"), information =     c("observed"), title = NULL, description = NULL)
+plot(ml,which=4)
+ml
+
+min(train)
+
+```
+El ajuste parece ser bueno, en las colas cuesta un poco de trabajo pero nuestro ajuste es más conservador que lo mostrado por los datos, nuestro modelo tiene colas más pesadas.
+
+Sobre los datos de testing el modelo se ve así:
+```{r}
+
+length(test)
+mean(train)
+
+plot(sort(test),qgev(((1:length(test))/length(test)),xi = 0.716205, mu =0, beta = 40275.607821))
+
+abline(a=0,b=1,col=3)
+```
+
+Pasa los mismo que en los otros casos, tenemos pocos datos de valores extremos y nuestros pronosticos arrojan un resultado más conservador. 
+
+##high injury
+
+```{r}
+x<-subset(dts,
+          InjType1=='high injury' )$AggClaim/subset(dts,
+          InjType1=='high injury' )$InjNb
+
+smp_size <- floor(0.85 * length(x))
+train_ind <- sample(length((x)), size = smp_size)
+
+train <- x[train_ind ]
+test <- x[-train_ind ]
+
+
+```
+
+###Historial y edf de los datos de entrenamiento
+```{r}
+plotdist(train, histo = TRUE, demp = TRUE)
+```
+En este caso elegimos una distribución weibull, usando los mismos criterios que antes. Es más fácil de manejar que la pareto y el ajuste es mejor. 
+
+```{r}
+fit_w <- fitdist(x, "weibull")
+plot(fit_w)
+fit_w
+```
+El ajuste parece ser muy bueno, comparando con los otros grupos es excelente. 
+
+```{r}
+
+length(test)
+
+
+plot(sort(test),qweibull(((1:length(test))/length(test)),shape = 0.74363, scale=79982.55948))
+
+abline(a=0,b=1,col=3)
+```
+Corroboramos con los datos de prueba que el modelo es bueno, casi no tiene errores respecto a la recta.
+
+##fatal injury
+
+```{r}
+x<-subset(dts,
+          InjType1=='fatal injury' )$AggClaim/subset(dts,
+          InjType1=='fatal injury' )$InjNb
+
+smp_size <- floor(0.85 * length(x))
+train_ind <- sample(length((x)), size = smp_size)
+
+train <- x[train_ind ]
+test <- x[-train_ind ]
+
+
+```
+
+###Historial y edf de los datos de entrenamiento
+```{r}
+plotdist(train, histo = TRUE, demp = TRUE)
+```
+
+Para este caso elegimos una distribución loglogística, el ajuste es muy bueno y captura de manera correcta el comportamiento y forma de las colas.
+```{r}
+fit_ll <- fitdist(x, "llogis")
+plot(fit_ll)
+fit_ll
+```
+
+
+```{r}
+
+length(test)
+
+
+plot(sort(test),qllogis(((1:length(test))/length(test)),shape = 1.066507, scale=11521.403982))
+
+abline(a=0,b=1,col=3)
+```
+
+Nuestro modelo caracteriza muy bien las colas y además es menos estricto que los datos, lo que equivale a un modelo más conservador. 
+
+#Número de siniestros
+Consideraremos solo la información de los ultimos tres años sobre el monto de siniestros
+La logica atras de esto es que los siniestros año con año no se distribuyen igual, como vemos en la siguiente gráfica. Se ve una reducción significativa en el número de siniestros el último año.
+```{r}
+#fechas<-dmy(dts$AccDate)
+fechas<-dts$AccDate
+hist(year(fechas))
+```
+Además como se ve aqui los meses se distribuyen uniforme
+```{r}
+meses<-dts$AccMth
+plot(order(meses %% 12))
+abline(v=length(meses)*(1:12/12),col=12)
+
+```
+Lo que equivale a que solo necesitamos la información de los años y podemos ignorar los meses. Si consideramos los datos desde 1996 
+
+```{r}
+fechas<-(dts$AccDate)
+fechas<-fechas[which(year(fechas) %in% c(1996,1997,1998))]
+y<-year(fechas)-1995
+hist(y,probability = T)
+```
+
+```{r}
+#w<-dmy(dts$AccDate)
+w<-year(dts$AccDate)
+w<-table(w)
+
+w<-as.numeric(((w)))
+
+w<-w[1:10]
+w[10]<-floor(1.1*w[10])#Ajuste por SONOR
+
+
+lambda<-mean(as.vector(w)) #estimador de maxima verosimilitud
+lambda
+```
+Por la forma de la densidad podemos suponer que los datos siguen una distribución Poisson. Nos queda lambda=2211 En lo particular, este proceso parece sobreestimar el número de siniestros, lo cual nos hace pensar que podría resultar correcto hacer un análisis no paramétrico en este caso (el futuro es no paramétrico). Además hicimos un ajuste por SONOR porque creemos que muchos datos de 1998 faltan por falta de reporte. Por falta de tiempo solo hicimos el ajuste paramétrico.
+
+Vamos a considerar que tenemos el siguiente número de polizas con el supuesto de que en promedio solo se siniestran el 2% de ellas.
+```{r}
+J<-50*2219.40000
+J
+```
+
+#Probabilidades adicionales
+
+Es necesario calcular cual es la probabilidad de que caigamos en cualquiera de los grupos, esto nos llevaría a calcular unos pesos y llegar a un modelo conjunto para los siniestros de tipo muestra.
+
+```{r}
+g<-dts$InjType1
+g<-as.numeric(table(g))
+
+g<-c(g[1:4],g[6:7])
+
+Grupos<-NULL
+Grupos[1]<-g[1]/sum(g) #fatal
+Grupos[2]<-g[2]/sum(g) #high
+Grupos[3]<-g[3]/sum(g) #medium
+Grupos[4]<-g[4]/sum(g) #minor
+Grupos[5]<-g[5]/sum(g) #severe
+Grupos[6]<-g[6]/sum(g) #small
+Grupos
+```
+Además necesitamos calcular la probabilidad de cuantas personas se lastiman por siniestro, esto varia entre 1 y 5 personas. 
+
+```{r}
+nu<-dts$InjNb
+nu<-as.numeric(table(nu))
+nu<-nu/sum(nu)
+```
+
+Con esto ya tenemos todos los elementos para realizar la simulación.
+
+#Simulación
+Simulamos primero el número de siniestros
+```{r}
+N<-10000 #numero de simulaciones
+numSiniestros<-rpois(N, lambda)
+```
+
+
+Ahora dado el número de siniestros simulamos el monto agregado en total 10,000 veces
+
+```{r,cache=TRUE,eval=FALSE}
+
+grupo<-c('fatal','high','medium','minor','severe','small')
+Agregado<-rep(0,N)
+for (i in 1:N){
+  if(i %% 10 ==0){print(i)}
+  group<-sample(grupo,numSiniestros[i],prob=Grupos,replace=TRUE)
+  num<-sample(1:5,numSiniestros[i],prob=nu,replace=TRUE)
+  for(j in 1:numSiniestros[i]){
+    if(group[j]=='fatal'){
+      Agregado[i]<-Agregado[i]+
+        num[j]*rllogis(1,shape=1.066507,scale=11521.40398)
+    }
+    if(group[j]=='high'){
+      Agregado[i]<-Agregado[i]+
+        num[j]*rweibull(1,shape=0.74363,scale=79982.5594)
+    }
+    if(group[j]=='medium'){
+      Agregado[i]<-Agregado[i]+
+        num[j]*gpdSim(model = 
+                        list(xi = 4.015587e-01, 
+                             mu = 0, 
+                             beta = 2.712141e+04 ), 
+                      n =1,seed = NULL)
+    }
+    if(group[j]=='minor'){
+      Agregado[i]<-Agregado[i]+
+        num[j]*gpdSim(model = 
+                        list(xi = 0.473090, 
+                             mu = 0, 
+                             beta = 8668.8497461 ), 
+                      n =1,seed = NULL)
+    }
+    if(group[j]=='severe'){
+      Agregado[i]<-Agregado[i]+
+        num[j]*gpdSim(model = 
+                        list(xi = 7.188708e-01, 
+                             mu = 0
+                             , 
+                             beta = 3.999534e+04 ), 
+                      n =1,seed = NULL)
+    }
+    if(group[j]=='small'){
+      Agregado[i]<-Agregado[i]+
+        num[j]*rlnorm(1,meanlog=9.548459,sdlog=1.389464)
+    }
+    
+    
+  }
+  
+  
+}
+```
+```{r}
+#write.csv(Agregado,'Agregado.csv')
+```
+
+
+```{r}
+Agregado<-read.csv('Agregado10m.csv')
+Agregado<-Agregado$x
+```
+
+Nuestra distribución del monto agregado se ve asi
+```{r}
+summary(Agregado)
+hist(Agregado)
+plot(Agregado)
+```
+
+
+#Prima
+##Prima promedio
+Dada la simulación calculamos la media y obtenemos
+```{r}
+PrimaP<-mean(Agregado)/J
+PrimaP # Lo que cobramos por asegurado
+ 1-length(which(Agregado>PrimaP*J))/length(Agregado)
+```
+Tiene la ventaja de no ser muy alta y además por si sola puede cubrir el 63.16% de las perdidas
+
+##Prima no paramétrica
+
+Esta la usamos para comparar, si no hubieramos hecho ningun supuesto distribucional hubieramos. 
+```{r}
+PrimaNP<-sum(dts$AggClaim)/J
+PrimaNP
+ 1-length(which(Agregado>PrimaNP*J))/length(Agregado)
+```
+Esta es muy grande pero cubre el 99.9% de los siniestros por si sola.
+Es muy grande porque supone que el número de siniestro va a ser muy grande, para corregir esto se podria hacer una prima semi parametrica considerando unicamente la distribución del monto de siniestros.
+```{r}
+PrimaSp<-lambda*mean(dts$AggClaim)/J
+PrimaSp
+1-length(which(Agregado>PrimaSp*J))/length(Agregado)
+
+```
+En este caso nos da algo muy chico porque el promedio no es una estadistica suficiente para calcular las colas pesadas. Unicamente cubre el .1% de los siniestros.
+
+Podemos concluir que el modelo paramétrico es mejor. 
+
+##Prima con Desviación estandar
+```{r}
+alfa<-1
+Primav<-(PrimaP*J+alfa*sd(Agregado))/J
+Primav
+1-length(which(Agregado>Primav*J))/length(Agregado)
+```
+Tiene la ventaja de que considera mejor la variablidad que el promedio, puede cubrir por si solo casi el 96% de los escenarios.  Se escogio uno porque no sube mucho el monto. 
+
+##Comparación entre primas
+```{r}
+plot(dts$AggClaim)
+abline(h=PrimaP,col=2)
+abline(h=PrimaNP,col=3)
+abline(h=PrimaSp,col=4)
+abline(h=Primav,col=5)
+
+plot(dts$AggClaim,ylim=c(0,10^4))
+abline(h=PrimaP,col=2)
+abline(h=PrimaNP,col=3)
+abline(h=PrimaSp,col=4)
+abline(h=Primav,col=5)
+
+
+plot(dts$AggClaim,ylim=c(0,2*10^3))
+abline(h=PrimaP,col=2)
+abline(h=PrimaNP,col=3)
+abline(h=PrimaSp,col=4)
+abline(h=Primav,col=5)
+
+```
+En nustra opinion la mejor prima de las calculadas es la Prima con varianza, porque no es muy diferente a las demás pero considera más información que las otras no consideras.
+
+#Capital mínimo de operación
+Consideramos la distribución de perdidas y ganancias, en este caso es el monto agregado-J*prima
+```{r}
+PyG<-Agregado-J*Primav
+hist(PyG)
+plot(PyG)
+```
+Si quitamos los datos de ganancias los datos se ven así:
+```{r}
+Perdidas<-PyG[which(PyG>0)]
+plot(Perdidas)
+length(Perdidas)
+```
+Como vimos desde antes los datos son pocos, nos interesa estar cubiertos en el 99.9% de los datos. Esto esta dado por el siguiente número
+```{r}
+PyG<-PyG[order(PyG)]
+CMO<-PyG[floor(10000*.999)]
+CMO
+
+plot(Perdidas)
+abline(h=CMO,col=2)
+
+
+```
+
+Admeás el Capital mínimo como porcentaje de la prima corresponde a .15 veces esta. A la compañia le toma 6.5 años en promedio recuperar ese dinero sin considerar siniestros
+```{r}
+J
+Primav*J/CMO
+CMO/Primav/J
+```
+En caso de que la los siniestros rebasen el CMO, la empresa sufriria perdidas muy graves y recomendamos que se asegure contra esto. 
+ 
+##Stresstesting
+
+Algo que valdria la pena probar es que pasa con el CMO y con la prima si la empresa pasa por años similares a los pasados. Esto es con el supuesto de que el numero de polizas es constante en el tiempo, el cual no es cierto y va un poco encontra de nuestros supuestos.
+
+```{r}
+siniestros<-NULL
+for(i in 1989:1998){
+  siniestros[i-1988]<-sum(dts$AggClaim[which(year(dts$AccDate)==i)])
+  
+}
+
+plot(siniestros-CMO-J*Primav)
+```
+Si la no considerara el CMO la compañia no hubiera perdido en ningun año.
+```{r}
+plot(siniestros-J*Primav)
+abline(h=0)
+```
+La compañia no hubiera quebrado en ningun año.
+
+Si hacemos lo mismo considerando el cambio en el número de polizas
+```{r}
+siniestros<-NULL
+for(i in 1989:1998){
+  siniestros[i-1988]<-mean(dts$AggClaim[which(year(dts$AccDate)==i)])
+  
+}
+siniestros
+
+plot(siniestros*J*.02-CMO-J*Primav)
+abline(h=0)
+```
+La compañia no hubiera quebrado en ninguno de los años anteriores.
+
+Si no consideramos el Capital mínimo obtenemos
+```{r}
+plot(siniestros*J*.02-J*Primav)
+abline(h=0)
+```
+La compañia hubiera perdido dinero solo en tres años pero el resto hubiera estado cubierta. Esto se debe a que dado el cambio en el numero de polizas, estamos suponiendo que el monto agregado los años ante tiene una distribución con colas más pesadas. Además decidimos ignorar esa información porque ya paso mucho tiempo en terminos de la frecuencia. 
+
+#Futuras investigaciones
+
+Hay muchas cosas que nos hubiera gustado abordar en el trabajo y por cuestiones de tiempo no fue posible incorporar. 
+
+Cuando segmentamos por grupo, valdría la pena segmentar de forma distinta, considerando más categorias o segmentando de más grave a menos grave considerando todas las variables.
+
+Sería de gran relevancia modelar la frecuencia en terminos de la supervivencia de las primas, además aqui falto segmentar los datos. Pudimos haber llegado a conclusiones más precisas.
+
+Otro punto importante sería realizar el ajuste de un modelo bayesiano de los datos, por la natuaraleza de mezcla de los datos, tal vez el modelo hubiera tenido unas interpretaciones mucho más claras (en terminos de la credibilidad).
+
+En el esquema de simulación, estaria interesante ver que pasa si se incorporan variables de control. Esto reduciría la varianza y equivaldría a una prima menor, resultando, así en un mayor poder de venta.
+
+Faltaria hacer un ajuste no paramétrico de todo y comparar con los resultados paramétricos (el futuro es no paramétroco). 
+
+
+#Bibliografía
+
+  R Core Team (2017). R: A language and environment for
+  statistical computing. R Foundation for Statistical
+  Computing, Vienna, Austria. URL https://www.R-project.org/.
+
+  Marie-Laure Delignette-Muller, Christophe Dutang and
+  Aurélie Siberchicot (2017). fitdistrplus: Help to Fit of a
+  Parametric Distribution to Non-Censored or Censored Data. R
+  package version 1.0-9.
+  https://CRAN.R-project.org/package=fitdistrplus
+  
+  Diethelm Wuertz, Tobias Setz and Yohan Chalabi (2017).
+  fExtremes: Rmetrics - Modelling Extreme Events in Finance.
+  R package version 3042.82.
+  https://CRAN.R-project.org/package=fExtremes
+  
+  Hadley Wickham (2017). tidyverse: Easily Install and Load
+  the 'Tidyverse'. R package version 1.2.1.
+  https://CRAN.R-project.org/package=tidyverse
+  
+  Vincent Goulet, Christophe Dutang and Mathieu Pigeon
+  (2018). actuar: Actuarial Functions and Heavy Tailed
+  Distributions. R package version 2.3-1.
+  https://CRAN.R-project.org/package=actuar
+
+  Terry M Therneau (2018). survival: Survival Analysis. R
+  package version 2.42-3.
+  https://CRAN.R-project.org/package=survival
+  
+  Elizabeth Gonzalez Estrada and Jose A. Villasenor Alva
+  (2012). gPdtest: Bootstrap goodness-of-fit test for the
+  generalized Pareto distribution. R package version 0.4.
+  https://CRAN.R-project.org/package=gPdtest
+  
+  
+  
+
+
