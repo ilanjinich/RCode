@@ -1,0 +1,5 @@
+Survival analysis. 
+Risk of getting diabetes.
+
+
+The code was done with María Jose Benitez and Mariana Harris.
