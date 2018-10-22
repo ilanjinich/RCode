@@ -1,0 +1,281 @@
+---
+title: "Coloquio"
+subtitle: "Ilan Jinich"
+author: "ITAM"
+date: "Fecha"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+```
+
+
+class: center, middle
+
+# Psicología matemática: 
+
+##Opinión de expertos
+
+
+
+---
+class: inverse, center, middle
+
+# Dos modelos
+
+---
+
+# Estadística
+
+Definimos la estadística como el conjunto de tecnicas para describir un fenomeno que se manifiesta a traves de datos que presentan variabilidad. 
+
+--
+
+
+El problema clásico de inferencia es definido por una serie de datos 
+$$x_1, x_2, \dots, x_n$$
+--
+
+provenientes de una distribución
+$$x_i \sim f$$
+--
+
+donde la forma funcional de esta es completamente conocida salvo por un paramétro desconocido. 
+
+$$f = f(\theta)$$
+$$\theta \in \mathbb{R}^k$$
+--
+
+Si llegamos a conocer el valor del paramétro podemos entender por completo el comportamiento del fenomeno que estos datos representan. 
+
+---
+#Estadística Bayesiana
+
+## Teorema de Bayes
+$$P(A|B) \propto P(A)P(B|A)$$
+
+--
+En el paragima bayesiano se considera la incertidumbre que se tiene sobre el paramétro asignandole una distribución
+
+$$P(\theta|x_1,x_2,\dots,x_n),$$
+
+--
+ésta se calcula a partir del teorema de Bayes juntando la verosimilitud de los datos
+$$f(x1,x2,\dots,x_n)=\prod_{i=1}^{n}f(x_i)$$
+y la probabilidad condicional u `opinion` de experto que se tiene sobre el paramétro
+$$\pi(\theta).$$
+---
+En particular:
+$$P(\theta|x_1,x_2,\dots,x_n) \propto \pi(\theta)\prod_{i=1}^{n}f(x_i)$$
+---
+#Un ejemplo
+$$x_i \sim P(\lambda) \; \text{ para } i=1,\dots,n \text{  iid}$$ y además $$\lambda\sim GA(\alpha,\beta)$$
+--
+Entonces
+$$f(x1,x2,\dots,x_n) \propto \lambda^{\sum_{i=1}^{n}x_i}e^{-n\lambda}$$
+$$\pi(\lambda) \propto \lambda^{\alpha-1}e^{-\beta\lambda}$$
+--
+Si aplicamos el teorema de Bayes obtenemos que
+$$P(\lambda|x_1,x_2,\dots,x_n)\propto\lambda^{\alpha+\sum_{i=1}^{n}x_i-1}e^{-(n+\beta)\lambda}$$
+--
+Es decir:
+$$\lambda \sim GA(\alpha+\sum_{i=1}^{n}x_i,\beta+n)$$
+
+---
+
+```{r,warning=FALSE,message=FALSE}
+library(tidyverse)
+library(ggthemes)
+```
+
+```{r,tidy=TRUE,fig.height=4,fig.width=6}
+set.seed(123)
+n <- 5
+x <- rpois(lam=1,n)
+x %>% 
+  as.tibble() %>% 
+  ggplot(aes(x=x))+
+  geom_histogram(fill='blue',bins=30)+
+  theme_tufte()+
+  ggtitle('Histograma de los datos')
+```
+
+
+---
+```{r,tidy=TRUE,fig.height=4,fig.width=6}
+l <- seq(0,3,by=.1)
+
+verosimilitud <- function(lam){
+  verosimilitud <- 1 
+  for(i in 1:n) verosimilitud <- verosimilitud*dpois(x[i],lam)
+  return (verosimilitud)
+}
+
+l %>% 
+  as.tibble() %>% 
+  mutate(ver=verosimilitud(l)) %>%
+  mutate(ver=ver/sum(ver)) %>% 
+  ggplot(aes(y=ver,x=l))+geom_line(col='blue')+
+  ggtitle('Verosimilitud')+theme_tufte()
+
+```
+
+---
+```{r,tidy=TRUE,fig.height=4,fig.width=6}
+l <- seq(0,3,by=.1)
+
+l %>% 
+  as.tibble() %>% 
+  mutate(g=dgamma(l,shape=.5,scale=1)) %>% 
+  ggplot(aes(x=l,y=g))+geom_line(col='red')+theme_tufte()
+  
+```
+
+---
+```{r,tidy=TRUE,fig.height=4,fig.width=6}
+l %>% 
+  as.tibble() %>% 
+  mutate(ver=verosimilitud(l)) %>%
+  mutate(ver=ver/sum(ver)) %>% 
+  mutate(g=dgamma(l,shape=1,scale=1)) %>% 
+  mutate(g=g/sum(g)) %>% 
+  mutate(p=dgamma(l,shape=1+sum(x),scale=1/(1+length(x)))) %>%
+  mutate(p=p/sum(p)) %>% 
+  ggplot(aes(x=l))+geom_line(aes(y=ver),col='blue')+
+  geom_line(col='red', aes(y=g))+
+  geom_line(col='green',aes(y=p))+
+  ggtitle('Distribución posterior')+theme_tufte()+
+  geom_vline(xintercept =1)
+```
+
+
+---
+#PERT
+####Problema de la ruta critica 
+![](cpm.jpg) 
+![](cpm2.png)
+---
+#Pert
+####Problema de evaluación de proyectos y revisión de técnicas.
+¿Qué pasa si incorporamos incertidumbre?
+--
+
+
+Se recurre a opiniones de expertos para hacer esto. 
+---
+```{r,tidy=TRUE,fig.height=4,fig.width=6}
+rpert <- function( n, x.min, x.max, x.mode, lambda = 4 ){
+    if( x.min > x.max || x.mode > x.max || x.mode < x.min ) stop( "invalid parameters" );
+    x.range <- x.max - x.min;
+    if( x.range == 0 ) return( rep( x.min, n ));
+    mu <- ( x.min + x.max + lambda * x.mode ) / ( lambda + 2 );
+    # special case if mu == mode
+    if( mu == x.mode ){
+        v <- ( lambda / 2 ) + 1}
+    else {
+        v <- (( mu - x.min ) * ( 2 * x.mode - x.min - x.max )) /
+          (( x.mode - mu ) * ( x.max - x.min ));}
+    w <- ( v * ( x.max - mu )) / ( mu - x.min );
+    return ( rbeta( n, v, w ) * x.range + x.min );}
+```
+
+[Referencia](https://www.riskamp.com/beta-pert)
+
+---
+```{r,tidy=TRUE,fig.height=4,fig.width=6}
+x <- rpert(n=1000,x.min=1,x.mode=5, x.max=100)
+x %>% 
+  as.tibble() %>% 
+  ggplot(aes(x))+
+  geom_histogram(fill='blue',bins=25)+
+  theme_tufte()+
+  ggtitle('Histograma de los datos')
+  
+```
+
+---
+
+class: inverse, center, middle
+
+# ¿Opinion de experto?
+
+
+---
+class: inverse, center, middle
+
+# ¿Propuestas?
+---
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE,tidy=TRUE,fig.height=10,fig.width=12}
+Datos<-read.csv('Artículo_Percepción - Form Responses 1.csv')
+Datos<-Datos[,4:20]
+colnames(Datos)<-c('Almost surely',
+                   'Almost probable',
+                   'Very good chances',
+                   'Probable',
+                   'Sure,',
+                   'Probably',
+                   'We believe that',
+                   'One or the other',
+                   'Better than 50/50',
+                   'We doubt that',
+                   'Probably no',
+                   'Low possibilities',
+                   'Possibly',
+                   'Almost no chance',
+                   'The possibilities are low',
+                   'Highly improbable',
+                   'Surely'
+                   )
+library('tidyverse')
+library('ggjoy')
+library('scales')
+Datos <- gather(Datos, "variable", "value")
+
+
+
+# Joyplot for probly
+ggplot(Datos,aes(y=reorder(variable,value,median),x=value))+
+  geom_joy(scale=4, aes(fill=variable), alpha=3/4)+
+  scale_x_continuous(breaks=seq(0,1,.1), labels=scales::percent)+
+  guides(fill=FALSE,color=FALSE)+
+  labs(title="Perceived probability",
+       y="Quote",
+       x="Assigned probability",
+       caption="IJF")#+scale_fill_grey()
+ggsave("joy1.png", height=8, width=8, dpi=120, type="cairo-png")
+
+```
+
+---
+
+```{r pressure, echo=FALSE, fig.cap="A caption", out.width = '80%'}
+knitr::include_graphics("Good.jpg")
+```
+
+
+
+
+---
+
+class: center, middle
+
+# Gracias!
+
+La presentación fue creada via el paquete de R [**xaringan**](https://github.com/yihui/xaringan).
+
+Referencias
+  - R Core Team (2018). R: A language and environment for
+  statistical computing. R Foundation for Statistical
+  Computing, Vienna, Austria. [URL]( https://www.R-project.org/).
+  - Zoni Nation, Perceptions of Probability and Numbers , (2017), [GitHub repository](https://github.com/zonination/perceptions)
+  -   Hadley Wickham (2017). tidyverse: Easily Install and Load
+  the 'Tidyverse'. [R package version 1.2.1.](https://CRAN.R-project.org/package=tidyverse)
+  
